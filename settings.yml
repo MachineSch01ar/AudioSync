@@ -10,10 +10,10 @@ highlight_text_color:
 
 seek_preroll_seconds:
   type: float
-  default: 0.04
+  default: 0
   min: 0
   max: 2
-  description: "How many seconds before the clicked word playback should begin."
+  description: "How many seconds before the clicked word playback should begin. Use 0 for exact word starts."
 
 debug_logging:
   type: bool

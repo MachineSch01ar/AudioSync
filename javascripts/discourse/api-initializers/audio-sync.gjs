@@ -2,6 +2,8 @@ import { apiInitializer } from "discourse/lib/api";
 
 const AUDIO_EXTENSIONS = [".mp3", ".m4a", ".wav", ".ogg", ".aac"];
 const JSON_EXTENSIONS = [".json"];
+const SEEK_PLAY_TIMEOUT_MS = 250;
+const METADATA_TIMEOUT_MS = 500;
 
 export default apiInitializer((api) => {
   api.decorateCookedElement(
@@ -50,6 +52,11 @@ export default apiInitializer((api) => {
         return;
       }
 
+      const alignmentDuration = getAlignmentDuration(audioWords);
+      if (!alignmentDuration) {
+        return;
+      }
+
       const domTokens = tokenizeDOM(element);
       if (!domTokens.length) {
         return;
@@ -70,8 +77,37 @@ export default apiInitializer((api) => {
         })
       );
 
+      prepareAudioSource(audio);
+
+      const clock = createClockMapper(audio, alignmentDuration);
+      let lastAlignmentTime = 0;
       let isLooping = false;
       let rafId = null;
+
+      let player;
+
+      const renderAt = (alignmentTime) => {
+        const safeAlignmentTime = clampTime(alignmentTime, alignmentDuration);
+
+        lastAlignmentTime = safeAlignmentTime;
+        updateActiveSpans(spans, safeAlignmentTime);
+        player?.update(safeAlignmentTime, audio.paused);
+
+        return safeAlignmentTime;
+      };
+
+      const renderCurrentTime = () => {
+        renderAt(clock.mediaToAlignmentTime(audio.currentTime));
+      };
+
+      const cancelLoop = () => {
+        isLooping = false;
+
+        if (rafId) {
+          cancelAnimationFrame(rafId);
+          rafId = null;
+        }
+      };
 
       const renderLoop = () => {
         if (audio.paused) {
@@ -79,16 +115,7 @@ export default apiInitializer((api) => {
           return;
         }
 
-        const currentTime = audio.currentTime;
-
-        spans.forEach((span) => {
-          if (currentTime >= span.start && currentTime < span.end) {
-            span.el.classList.add("active");
-          } else {
-            span.el.classList.remove("active");
-          }
-        });
-
+        renderCurrentTime();
         rafId = requestAnimationFrame(renderLoop);
       };
 
@@ -99,36 +126,93 @@ export default apiInitializer((api) => {
         }
       };
 
+      const seekToAlignment = async (
+        alignmentTime,
+        { play = false, highlightTime = alignmentTime } = {}
+      ) => {
+        const safeAlignmentTime = clampTime(alignmentTime, alignmentDuration);
+
+        renderAt(highlightTime);
+
+        await waitForMetadata(audio, METADATA_TIMEOUT_MS);
+        clock.captureMediaDuration();
+
+        try {
+          audio.currentTime = clock.alignmentToMediaTime(safeAlignmentTime);
+        } catch (error) {
+          debugWarn("AudioSync: audio seek failed:", error);
+        }
+
+        if (play) {
+          await waitForSeek(audio, SEEK_PLAY_TIMEOUT_MS);
+          await playAudio(audio);
+          startLoop();
+        }
+      };
+
+      player = createAudioSyncPlayer({
+        alignmentDuration,
+        onTogglePlay: () => {
+          if (audio.paused) {
+            const restartFromBeginning =
+              audio.ended || lastAlignmentTime >= alignmentDuration;
+            const startTime = restartFromBeginning ? 0 : lastAlignmentTime;
+
+            seekToAlignment(startTime, { play: true });
+          } else {
+            audio.pause();
+          }
+        },
+        onSeekPreview: renderAt,
+        onSeekCommit: (alignmentTime) => {
+          seekToAlignment(alignmentTime, { play: !audio.paused });
+        },
+      });
+
+      insertAfterAudio(audio, player.element);
+      renderAt(0);
+
+      audio.addEventListener("loadedmetadata", () => {
+        clock.captureMediaDuration();
+        renderCurrentTime();
+      });
+      audio.addEventListener("durationchange", () => {
+        clock.captureMediaDuration();
+      });
       audio.addEventListener("play", startLoop);
       audio.addEventListener("playing", startLoop);
-      audio.addEventListener("timeupdate", startLoop);
+      audio.addEventListener("timeupdate", () => {
+        clock.captureMediaDuration();
+        renderCurrentTime();
+        startLoop();
+      });
 
       audio.addEventListener("pause", () => {
-        isLooping = false;
-        if (rafId) {
-          cancelAnimationFrame(rafId);
-        }
+        cancelLoop();
+        renderCurrentTime();
       });
 
       audio.addEventListener("ended", () => {
-        isLooping = false;
-        if (rafId) {
-          cancelAnimationFrame(rafId);
-        }
-
-        spans.forEach((span) => span.el.classList.remove("active"));
+        cancelLoop();
+        renderAt(alignmentDuration);
       });
 
       element.addEventListener("click", (event) => {
-        const target = event.target;
+        const target = event.target?.closest?.(".speaking-word");
 
-        if (target?.classList?.contains("speaking-word")) {
+        if (target) {
+          event.preventDefault();
+          event.stopPropagation();
+
           const start = parseFloat(target.dataset.start);
 
           if (!Number.isNaN(start)) {
-            const preroll = settings.seek_preroll_seconds ?? 0.04;
-            audio.currentTime = Math.max(0, start - preroll);
-            audio.play();
+            const preroll = getSeekPreroll();
+
+            seekToAlignment(start - preroll, {
+              play: true,
+              highlightTime: start,
+            });
           }
         }
       });
@@ -149,6 +233,254 @@ function debugWarn(...args) {
   }
 }
 
+function getSeekPreroll() {
+  const preroll = Number(settings.seek_preroll_seconds ?? 0);
+
+  return Number.isFinite(preroll) && preroll > 0 ? preroll : 0;
+}
+
+function prepareAudioSource(audio) {
+  audio.controls = false;
+  audio.preload = "metadata";
+  audio.classList.add("audio-sync-source");
+  audio.setAttribute("aria-hidden", "true");
+  audio.tabIndex = -1;
+
+  const onebox = audio.closest(".onebox, aside.onebox");
+  if (onebox) {
+    onebox.classList.add("audio-sync-source-wrapper");
+  }
+
+  if (audio.readyState === 0) {
+    audio.load();
+  }
+}
+
+function createAudioSyncPlayer({
+  alignmentDuration,
+  onTogglePlay,
+  onSeekPreview,
+  onSeekCommit,
+}) {
+  const element = document.createElement("div");
+  element.className = "audio-sync-player";
+
+  const button = document.createElement("button");
+  button.type = "button";
+  button.className = "audio-sync-play-toggle";
+
+  const seek = document.createElement("input");
+  seek.type = "range";
+  seek.className = "audio-sync-seek";
+  seek.min = "0";
+  seek.max = String(alignmentDuration);
+  seek.step = "0.01";
+  seek.value = "0";
+  seek.setAttribute("aria-label", "Seek narration");
+
+  const time = document.createElement("span");
+  time.className = "audio-sync-time";
+
+  const durationLabel = formatTime(alignmentDuration);
+  let isScrubbing = false;
+
+  const setPlayingState = (isPlaying) => {
+    button.textContent = isPlaying ? "Pause" : "Play";
+    button.setAttribute(
+      "aria-label",
+      isPlaying ? "Pause narration" : "Play narration"
+    );
+  };
+
+  const setTimeLabel = (alignmentTime) => {
+    time.textContent = `${formatTime(alignmentTime)} / ${durationLabel}`;
+  };
+
+  button.addEventListener("click", onTogglePlay);
+
+  seek.addEventListener("input", () => {
+    isScrubbing = true;
+
+    const alignmentTime = Number(seek.value);
+    setTimeLabel(alignmentTime);
+    onSeekPreview(alignmentTime);
+  });
+
+  seek.addEventListener("change", () => {
+    isScrubbing = false;
+    onSeekCommit(Number(seek.value));
+  });
+
+  seek.addEventListener("blur", () => {
+    isScrubbing = false;
+  });
+
+  element.append(button, seek, time);
+  setPlayingState(false);
+  setTimeLabel(0);
+
+  return {
+    element,
+    update(alignmentTime, isPaused) {
+      const safeAlignmentTime = clampTime(alignmentTime, alignmentDuration);
+
+      if (!isScrubbing) {
+        seek.value = String(safeAlignmentTime);
+      }
+
+      setPlayingState(!isPaused);
+      setTimeLabel(safeAlignmentTime);
+    },
+  };
+}
+
+function createClockMapper(audio, alignmentDuration) {
+  let mediaDuration = null;
+
+  const captureMediaDuration = () => {
+    if (mediaDuration) {
+      return mediaDuration;
+    }
+
+    const duration = getFinitePositiveNumber(audio.duration);
+
+    if (duration) {
+      mediaDuration = duration;
+      debugLog(
+        "AudioSync: using media/alignment duration mapping:",
+        mediaDuration,
+        alignmentDuration
+      );
+    }
+
+    return mediaDuration;
+  };
+
+  captureMediaDuration();
+
+  return {
+    captureMediaDuration,
+    alignmentToMediaTime(alignmentTime) {
+      const targetDuration = captureMediaDuration() || alignmentDuration;
+
+      return clampTime(
+        scaleTime(alignmentTime, alignmentDuration, targetDuration),
+        targetDuration
+      );
+    },
+    mediaToAlignmentTime(mediaTime) {
+      const sourceDuration = captureMediaDuration() || alignmentDuration;
+
+      return clampTime(
+        scaleTime(mediaTime, sourceDuration, alignmentDuration),
+        alignmentDuration
+      );
+    },
+  };
+}
+
+function updateActiveSpans(spans, alignmentTime) {
+  spans.forEach((span) => {
+    if (alignmentTime >= span.start && alignmentTime < span.end) {
+      span.el.classList.add("active");
+    } else {
+      span.el.classList.remove("active");
+    }
+  });
+}
+
+async function playAudio(audio) {
+  try {
+    const playPromise = audio.play();
+
+    if (playPromise) {
+      await playPromise;
+    }
+  } catch (error) {
+    debugWarn("AudioSync: audio playback failed:", error);
+  }
+}
+
+function waitForMetadata(audio, timeoutMs) {
+  if (audio.readyState >= 1) {
+    return Promise.resolve();
+  }
+
+  return waitForEvent(audio, "loadedmetadata", timeoutMs);
+}
+
+function waitForSeek(audio, timeoutMs) {
+  if (!audio.seeking) {
+    return Promise.resolve();
+  }
+
+  return waitForEvent(audio, "seeked", timeoutMs);
+}
+
+function waitForEvent(target, eventName, timeoutMs) {
+  return new Promise((resolve) => {
+    let timeoutId;
+
+    const done = () => {
+      target.removeEventListener(eventName, done);
+
+      if (timeoutId) {
+        clearTimeout(timeoutId);
+      }
+
+      resolve();
+    };
+
+    target.addEventListener(eventName, done, { once: true });
+    timeoutId = setTimeout(done, timeoutMs);
+  });
+}
+
+function getAlignmentDuration(audioWords) {
+  return audioWords.reduce((max, word) => {
+    const end = getFinitePositiveNumber(word.end);
+
+    return end && end > max ? end : max;
+  }, 0);
+}
+
+function getFinitePositiveNumber(value) {
+  const number = Number(value);
+
+  return Number.isFinite(number) && number > 0 ? number : null;
+}
+
+function scaleTime(time, sourceDuration, targetDuration) {
+  if (!sourceDuration || !targetDuration) {
+    return time;
+  }
+
+  return (time * targetDuration) / sourceDuration;
+}
+
+function clampTime(time, duration) {
+  const safeTime = Number.isFinite(Number(time)) ? Number(time) : 0;
+
+  return Math.min(Math.max(safeTime, 0), duration);
+}
+
+function formatTime(seconds) {
+  const totalSeconds = Math.max(0, Math.floor(Number(seconds) || 0));
+  const hours = Math.floor(totalSeconds / 3600);
+  const minutes = Math.floor((totalSeconds % 3600) / 60);
+  const remainingSeconds = totalSeconds % 60;
+
+  if (hours > 0) {
+    return `${hours}:${padTime(minutes)}:${padTime(remainingSeconds)}`;
+  }
+
+  return `${padTime(minutes)}:${padTime(remainingSeconds)}`;
+}
+
+function padTime(value) {
+  return String(value).padStart(2, "0");
+}
+
 function findOrCreateAudio(element) {
   const existingAudio = element.querySelector("audio");
   if (existingAudio) {
@@ -164,7 +496,7 @@ function findOrCreateAudio(element) {
   audio.controls = true;
   audio.preload = "metadata";
   audio.src = audioLink.href;
-  audio.className = "audio-sync-player";
+  audio.className = "audio-sync-source-candidate";
 
   insertAfterAssetLink(audioLink, audio);
   hideAssetLink(audioLink);
@@ -205,6 +537,13 @@ function hideAssetLink(link) {
 function insertAfterAssetLink(link, node) {
   const onebox = link.closest(".onebox, aside.onebox");
   const anchor = onebox || link;
+
+  anchor.insertAdjacentElement("afterend", node);
+}
+
+function insertAfterAudio(audio, node) {
+  const onebox = audio.closest(".onebox, aside.onebox");
+  const anchor = onebox || audio;
 
   anchor.insertAdjacentElement("afterend", node);
 }

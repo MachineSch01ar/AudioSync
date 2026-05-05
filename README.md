@@ -4,6 +4,8 @@ AudioSync is a Discourse theme component that highlights the word currently bein
 
 It also lets readers click a highlighted word to seek the audio to that word.
 
+AudioSync renders its own compact audio controls. The displayed duration comes from the timestamp JSON, not from browser MP3 metadata, so files with imperfect MP3 duration metadata can still show a stable reading timeline.
+
 ## Install
 
 In Discourse, go to **Admin > Customize > Themes**, choose **Install**, and install this repository as a theme component from GitHub. Add the component to the active theme after installation.
@@ -69,7 +71,7 @@ Admins can customize:
 
 - `highlight_color`
 - `highlight_text_color`
-- `seek_preroll_seconds`
+- `seek_preroll_seconds` defaults to `0` for exact word starts
 - `debug_logging`
 
 ## Development

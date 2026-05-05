@@ -1,7 +1,64 @@
+.audio-sync-source,
+.audio-sync-source-wrapper {
+  display: none !important;
+}
+
 .audio-sync-player {
-  display: block;
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
   width: 100%;
   margin: 0.75rem 0 1rem;
+  padding: 0.65rem 0.75rem;
+  border: 1px solid var(--primary-low);
+  border-radius: 6px;
+  background: var(--secondary);
+}
+
+.audio-sync-play-toggle {
+  flex: 0 0 auto;
+  min-width: 4.5rem;
+  padding: 0.35rem 0.65rem;
+  border: 1px solid var(--primary-low-mid);
+  border-radius: 4px;
+  color: var(--secondary);
+  background: var(--tertiary);
+  font: inherit;
+  cursor: pointer;
+}
+
+.audio-sync-play-toggle:hover,
+.audio-sync-play-toggle:focus {
+  background: var(--tertiary-hover, var(--tertiary));
+}
+
+.audio-sync-seek {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.audio-sync-time {
+  flex: 0 0 auto;
+  min-width: 6.5rem;
+  color: var(--primary-medium);
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+  white-space: nowrap;
+}
+
+@media (max-width: 480px) {
+  .audio-sync-player {
+    flex-wrap: wrap;
+  }
+
+  .audio-sync-seek {
+    flex-basis: 100%;
+    order: 3;
+  }
+
+  .audio-sync-time {
+    margin-left: auto;
+  }
 }
 
 .speaking-word {
