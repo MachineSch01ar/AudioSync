@@ -1,0 +1,13 @@
+{
+  "name": "AudioSync",
+  "component": true,
+  "authors": "AudioSync contributors",
+  "about_url": null,
+  "license_url": null,
+  "learn_more": "Highlights the currently spoken word in Discourse posts using an audio file and timestamp JSON alignment.",
+  "theme_version": "0.1.0",
+  "minimum_discourse_version": null,
+  "maximum_discourse_version": null,
+  "assets": {},
+  "modifiers": {}
+}

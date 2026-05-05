@@ -1,0 +1,21 @@
+.audio-sync-player {
+  display: block;
+  width: 100%;
+  margin: 0.75rem 0 1rem;
+}
+
+.speaking-word {
+  display: inline;
+  cursor: pointer;
+  border-radius: 3px;
+  transition: all 0.3s ease;
+}
+
+.speaking-word.active {
+  color: #{$highlight-text-color} !important;
+  background-color: #{$highlight-color} !important;
+  box-shadow:
+    0 0 8px #{$highlight-color},
+    0 0 0 1px #{$highlight-color};
+  transition: none;
+}

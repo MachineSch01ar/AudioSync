@@ -1,0 +1,21 @@
+highlight_color:
+  type: string
+  default: "#26d670"
+  description: "Background and glow color for the currently spoken word."
+
+highlight_text_color:
+  type: string
+  default: "#000000"
+  description: "Text color for the currently spoken word."
+
+seek_preroll_seconds:
+  type: float
+  default: 0.04
+  min: 0
+  max: 2
+  description: "How many seconds before the clicked word playback should begin."
+
+debug_logging:
+  type: bool
+  default: false
+  description: "Log matching and fetch details to the browser console."
