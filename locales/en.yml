@@ -4,6 +4,6 @@ en:
     settings:
       highlight_color: "Background and glow color for the currently spoken word."
       highlight_text_color: "Text color for the currently spoken word."
-      seek_preroll_seconds: "How many seconds before the clicked word playback should begin. Use 0 for exact word starts."
+      seek_preroll_seconds: "How many seconds before the clicked word playback should begin. Increase this if clicked words start clipped."
       highlight_offset_seconds: "Timing correction for highlighting. Positive values make highlighting happen earlier; negative values make it happen later."
       debug_logging: "Log matching and fetch details to the browser console."

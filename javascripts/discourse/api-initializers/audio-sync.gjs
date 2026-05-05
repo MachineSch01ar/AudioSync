@@ -2,8 +2,9 @@ import { apiInitializer } from "discourse/lib/api";
 
 const AUDIO_EXTENSIONS = [".mp3", ".m4a", ".wav", ".ogg", ".aac"];
 const JSON_EXTENSIONS = [".json"];
-const SEEK_PLAY_TIMEOUT_MS = 250;
+const SEEK_PLAY_TIMEOUT_MS = 750;
 const METADATA_TIMEOUT_MS = 500;
+const SEEK_SETTLE_TOLERANCE_SECONDS = 0.04;
 
 export default apiInitializer((api) => {
   api.decorateCookedElement(
@@ -129,7 +130,8 @@ export default apiInitializer((api) => {
 
       const seekToAlignment = async (
         alignmentTime,
-        { play = false, highlightTime = alignmentTime } = {}
+        { play = false, highlightTime = alignmentTime, clickedWordStart = null } =
+          {}
       ) => {
         const safeAlignmentTime = clampTime(alignmentTime, alignmentDuration);
         const mediaAlignmentTime = clampTime(
@@ -142,14 +144,31 @@ export default apiInitializer((api) => {
         await waitForMetadata(audio, METADATA_TIMEOUT_MS);
         clock.captureMediaDuration();
 
+        const targetMediaTime = clock.alignmentToMediaTime(mediaAlignmentTime);
+
         try {
-          audio.currentTime = clock.alignmentToMediaTime(mediaAlignmentTime);
+          audio.currentTime = targetMediaTime;
         } catch (error) {
           debugWarn("AudioSync: audio seek failed:", error);
         }
 
         if (play) {
-          await waitForSeek(audio, SEEK_PLAY_TIMEOUT_MS);
+          await waitForSeekCompletion(
+            audio,
+            targetMediaTime,
+            SEEK_PLAY_TIMEOUT_MS
+          );
+
+          if (clickedWordStart !== null) {
+            debugLog("AudioSync: clicked word seek:", {
+              clicked_word_start: clickedWordStart,
+              requested_alignment_time: safeAlignmentTime,
+              requested_media_alignment_time: mediaAlignmentTime,
+              requested_media_time: targetMediaTime,
+              actual_media_time: audio.currentTime,
+            });
+          }
+
           await playAudio(audio);
           startLoop();
         }
@@ -217,6 +236,7 @@ export default apiInitializer((api) => {
             seekToAlignment(start - preroll, {
               play: true,
               highlightTime: start,
+              clickedWordStart: start,
             });
           }
         }
@@ -239,9 +259,9 @@ function debugWarn(...args) {
 }
 
 function getSeekPreroll() {
-  const preroll = Number(settings.seek_preroll_seconds ?? 0);
+  const preroll = Number(settings.seek_preroll_seconds ?? 0.08);
 
-  return Number.isFinite(preroll) && preroll > 0 ? preroll : 0;
+  return Number.isFinite(preroll) && preroll >= 0 ? preroll : 0.08;
 }
 
 function getSyncOffset() {
@@ -420,12 +440,33 @@ function waitForMetadata(audio, timeoutMs) {
   return waitForEvent(audio, "loadedmetadata", timeoutMs);
 }
 
-function waitForSeek(audio, timeoutMs) {
-  if (!audio.seeking) {
+function waitForSeekCompletion(audio, targetTime, timeoutMs) {
+  if (isNearTime(audio.currentTime, targetTime)) {
     return Promise.resolve();
   }
 
-  return waitForEvent(audio, "seeked", timeoutMs);
+  return new Promise((resolve) => {
+    let timeoutId;
+    let intervalId;
+
+    const done = () => {
+      audio.removeEventListener("seeked", done);
+      clearTimeout(timeoutId);
+      clearInterval(intervalId);
+      resolve();
+    };
+
+    const checkDone = () => {
+      if (isNearTime(audio.currentTime, targetTime)) {
+        done();
+      }
+    };
+
+    audio.addEventListener("seeked", done, { once: true });
+    intervalId = setInterval(checkDone, 25);
+    timeoutId = setTimeout(done, timeoutMs);
+    checkDone();
+  });
 }
 
 function waitForEvent(target, eventName, timeoutMs) {
@@ -445,6 +486,13 @@ function waitForEvent(target, eventName, timeoutMs) {
     target.addEventListener(eventName, done, { once: true });
     timeoutId = setTimeout(done, timeoutMs);
   });
+}
+
+function isNearTime(actualTime, targetTime) {
+  return (
+    Math.abs(Number(actualTime) - Number(targetTime)) <=
+    SEEK_SETTLE_TOLERANCE_SECONDS
+  );
 }
 
 function getAlignmentDuration(audioWords) {
