@@ -80,6 +80,7 @@ export default apiInitializer((api) => {
       prepareAudioSource(audio);
 
       const clock = createClockMapper(audio, alignmentDuration);
+      const syncOffset = getSyncOffset();
       let lastAlignmentTime = 0;
       let isLooping = false;
       let rafId = null;
@@ -97,7 +98,7 @@ export default apiInitializer((api) => {
       };
 
       const renderCurrentTime = () => {
-        renderAt(clock.mediaToAlignmentTime(audio.currentTime));
+        renderAt(clock.mediaToAlignmentTime(audio.currentTime) + syncOffset);
       };
 
       const cancelLoop = () => {
@@ -131,6 +132,10 @@ export default apiInitializer((api) => {
         { play = false, highlightTime = alignmentTime } = {}
       ) => {
         const safeAlignmentTime = clampTime(alignmentTime, alignmentDuration);
+        const mediaAlignmentTime = clampTime(
+          safeAlignmentTime - syncOffset,
+          alignmentDuration
+        );
 
         renderAt(highlightTime);
 
@@ -138,7 +143,7 @@ export default apiInitializer((api) => {
         clock.captureMediaDuration();
 
         try {
-          audio.currentTime = clock.alignmentToMediaTime(safeAlignmentTime);
+          audio.currentTime = clock.alignmentToMediaTime(mediaAlignmentTime);
         } catch (error) {
           debugWarn("AudioSync: audio seek failed:", error);
         }
@@ -237,6 +242,12 @@ function getSeekPreroll() {
   const preroll = Number(settings.seek_preroll_seconds ?? 0);
 
   return Number.isFinite(preroll) && preroll > 0 ? preroll : 0;
+}
+
+function getSyncOffset() {
+  const offset = Number(settings.highlight_offset_seconds ?? 0.08);
+
+  return Number.isFinite(offset) ? offset : 0.08;
 }
 
 function prepareAudioSource(audio) {
