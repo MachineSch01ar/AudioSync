@@ -3,6 +3,10 @@
   display: none !important;
 }
 
+.cooked.audio-sync-floating-context {
+  overflow: visible;
+}
+
 .audio-sync-player {
   --audio-sync-sticky-offset: calc(
     var(--header-offset, var(--d-header-height, 0px)) + 0.5rem

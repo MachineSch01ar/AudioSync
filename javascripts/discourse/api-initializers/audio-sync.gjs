@@ -174,9 +174,15 @@ export default apiInitializer((api) => {
         }
       };
 
+      const floatingEnabled = isFloatingPlayerEnabled();
+
+      if (floatingEnabled) {
+        element.classList.add("audio-sync-floating-context");
+      }
+
       player = createAudioSyncPlayer({
         alignmentDuration,
-        floatingEnabled: isFloatingPlayerEnabled(),
+        floatingEnabled,
         onTogglePlay: () => {
           if (audio.paused) {
             const restartFromBeginning =
