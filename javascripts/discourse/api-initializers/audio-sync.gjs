@@ -200,7 +200,7 @@ export default apiInitializer((api) => {
         },
       });
 
-      insertAfterAudio(audio, player.element);
+      insertAfterAudio(audio, player.element, element);
       renderAt(0);
 
       audio.addEventListener("loadedmetadata", () => {
@@ -619,11 +619,26 @@ function insertAfterAssetLink(link, node) {
   anchor.insertAdjacentElement("afterend", node);
 }
 
-function insertAfterAudio(audio, node) {
-  const onebox = audio.closest(".onebox, aside.onebox");
-  const anchor = onebox || audio;
+function insertAfterAudio(audio, node, cookedElement) {
+  const sourceNode = audio.closest(".onebox, aside.onebox") || audio;
+  const anchor =
+    findDirectChildContaining(cookedElement, sourceNode) || sourceNode;
 
   anchor.insertAdjacentElement("afterend", node);
+}
+
+function findDirectChildContaining(root, node) {
+  if (!root || !node || !root.contains(node)) {
+    return null;
+  }
+
+  let current = node;
+
+  while (current?.parentElement && current.parentElement !== root) {
+    current = current.parentElement;
+  }
+
+  return current?.parentElement === root ? current : null;
 }
 
 function normalize(str) {
