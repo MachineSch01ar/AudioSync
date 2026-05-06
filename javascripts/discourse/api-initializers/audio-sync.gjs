@@ -388,18 +388,17 @@ function createClockMapper(audio, alignmentDuration) {
   let mediaDuration = null;
 
   const captureMediaDuration = () => {
-    if (mediaDuration) {
-      return mediaDuration;
-    }
-
     const duration = getFinitePositiveNumber(audio.duration);
 
-    if (duration) {
+    if (duration && duration !== mediaDuration) {
       mediaDuration = duration;
       debugLog(
-        "AudioSync: using media/alignment duration mapping:",
-        mediaDuration,
-        alignmentDuration
+        "AudioSync: media/alignment durations:",
+        {
+          mediaDuration,
+          alignmentDuration,
+          difference: mediaDuration - alignmentDuration,
+        }
       );
     }
 
@@ -413,18 +412,12 @@ function createClockMapper(audio, alignmentDuration) {
     alignmentToMediaTime(alignmentTime) {
       const targetDuration = captureMediaDuration() || alignmentDuration;
 
-      return clampTime(
-        scaleTime(alignmentTime, alignmentDuration, targetDuration),
-        targetDuration
-      );
+      return clampTime(alignmentTime, targetDuration);
     },
     mediaToAlignmentTime(mediaTime) {
-      const sourceDuration = captureMediaDuration() || alignmentDuration;
+      captureMediaDuration();
 
-      return clampTime(
-        scaleTime(mediaTime, sourceDuration, alignmentDuration),
-        alignmentDuration
-      );
+      return clampTime(mediaTime, alignmentDuration);
     },
   };
 }
@@ -526,14 +519,6 @@ function getFinitePositiveNumber(value) {
   const number = Number(value);
 
   return Number.isFinite(number) && number > 0 ? number : null;
-}
-
-function scaleTime(time, sourceDuration, targetDuration) {
-  if (!sourceDuration || !targetDuration) {
-    return time;
-  }
-
-  return (time * targetDuration) / sourceDuration;
 }
 
 function clampTime(time, duration) {
