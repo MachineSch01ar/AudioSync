@@ -22,6 +22,11 @@ highlight_offset_seconds:
   max: 1
   description: "Timing correction for highlighting. Positive values make highlighting happen earlier; negative values make it happen later."
 
+floating_player_enabled:
+  type: bool
+  default: false
+  description: "Keep the AudioSync player visible near the top of the screen after readers scroll past it, while its post remains in view."
+
 debug_logging:
   type: bool
   default: false

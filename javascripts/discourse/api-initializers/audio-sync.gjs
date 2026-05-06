@@ -176,6 +176,7 @@ export default apiInitializer((api) => {
 
       player = createAudioSyncPlayer({
         alignmentDuration,
+        floatingEnabled: isFloatingPlayerEnabled(),
         onTogglePlay: () => {
           if (audio.paused) {
             const restartFromBeginning =
@@ -270,6 +271,13 @@ function getSyncOffset() {
   return Number.isFinite(offset) ? offset : 0.08;
 }
 
+function isFloatingPlayerEnabled() {
+  return (
+    settings.floating_player_enabled === true ||
+    settings.floating_player_enabled === "true"
+  );
+}
+
 function prepareAudioSource(audio) {
   audio.controls = false;
   audio.preload = "metadata";
@@ -289,12 +297,17 @@ function prepareAudioSource(audio) {
 
 function createAudioSyncPlayer({
   alignmentDuration,
+  floatingEnabled = false,
   onTogglePlay,
   onSeekPreview,
   onSeekCommit,
 }) {
   const element = document.createElement("div");
   element.className = "audio-sync-player";
+
+  if (floatingEnabled) {
+    element.classList.add("audio-sync-player--floating");
+  }
 
   const button = document.createElement("button");
   button.type = "button";
