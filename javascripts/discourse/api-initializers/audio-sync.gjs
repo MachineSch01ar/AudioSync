@@ -404,6 +404,7 @@ function createClockMapper(audio, alignmentDuration) {
           mediaDuration,
           alignmentDuration,
           difference: mediaDuration - alignmentDuration,
+          mappingRatio: mediaDuration / alignmentDuration,
         }
       );
     }
@@ -418,12 +419,18 @@ function createClockMapper(audio, alignmentDuration) {
     alignmentToMediaTime(alignmentTime) {
       const targetDuration = captureMediaDuration() || alignmentDuration;
 
-      return clampTime(alignmentTime, targetDuration);
+      return clampTime(
+        scaleTime(alignmentTime, alignmentDuration, targetDuration),
+        targetDuration
+      );
     },
     mediaToAlignmentTime(mediaTime) {
-      captureMediaDuration();
+      const sourceDuration = captureMediaDuration() || alignmentDuration;
 
-      return clampTime(mediaTime, alignmentDuration);
+      return clampTime(
+        scaleTime(mediaTime, sourceDuration, alignmentDuration),
+        alignmentDuration
+      );
     },
   };
 }
@@ -525,6 +532,18 @@ function getFinitePositiveNumber(value) {
   const number = Number(value);
 
   return Number.isFinite(number) && number > 0 ? number : null;
+}
+
+function scaleTime(time, sourceDuration, targetDuration) {
+  const safeTime = Number.isFinite(Number(time)) ? Number(time) : 0;
+  const safeSourceDuration = getFinitePositiveNumber(sourceDuration);
+  const safeTargetDuration = getFinitePositiveNumber(targetDuration);
+
+  if (!safeSourceDuration || !safeTargetDuration) {
+    return safeTime;
+  }
+
+  return (safeTime * safeTargetDuration) / safeSourceDuration;
 }
 
 function clampTime(time, duration) {
