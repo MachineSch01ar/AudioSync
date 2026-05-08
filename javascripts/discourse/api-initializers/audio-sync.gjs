@@ -80,7 +80,9 @@ export default apiInitializer((api) => {
 
       prepareAudioSource(audio);
 
-      const clock = createClockMapper(audio, alignmentDuration);
+      const clock = createClockMapper(audio, alignmentDuration, {
+        timebase: isMediaTimebase(alignment) ? "media" : "alignment",
+      });
       const syncOffset = getSyncOffset();
       let lastAlignmentTime = 0;
       let isLooping = false;
@@ -283,6 +285,10 @@ function getSyncOffset() {
   return Number.isFinite(offset) ? offset : 0.08;
 }
 
+function isMediaTimebase(alignment) {
+  return String(alignment?.timebase ?? "").toLowerCase() === "media";
+}
+
 function isFloatingPlayerEnabled() {
   return (
     settings.floating_player_enabled === true ||
@@ -390,8 +396,14 @@ function createAudioSyncPlayer({
   };
 }
 
-function createClockMapper(audio, alignmentDuration) {
+function createClockMapper(
+  audio,
+  alignmentDuration,
+  { timebase = "alignment" } = {}
+) {
   let mediaDuration = null;
+  const normalizedTimebase = String(timebase || "alignment").toLowerCase();
+  const scalingEnabled = normalizedTimebase !== "media";
 
   const captureMediaDuration = () => {
     const duration = getFinitePositiveNumber(audio.duration);
@@ -404,6 +416,8 @@ function createClockMapper(audio, alignmentDuration) {
           mediaDuration,
           alignmentDuration,
           difference: mediaDuration - alignmentDuration,
+          timebase: normalizedTimebase,
+          scalingEnabled,
           mappingRatio: mediaDuration / alignmentDuration,
         }
       );
@@ -419,6 +433,10 @@ function createClockMapper(audio, alignmentDuration) {
     alignmentToMediaTime(alignmentTime) {
       const targetDuration = captureMediaDuration() || alignmentDuration;
 
+      if (!scalingEnabled) {
+        return clampTime(alignmentTime, targetDuration);
+      }
+
       return clampTime(
         scaleTime(alignmentTime, alignmentDuration, targetDuration),
         targetDuration
@@ -426,6 +444,10 @@ function createClockMapper(audio, alignmentDuration) {
     },
     mediaToAlignmentTime(mediaTime) {
       const sourceDuration = captureMediaDuration() || alignmentDuration;
+
+      if (!scalingEnabled) {
+        return clampTime(mediaTime, alignmentDuration);
+      }
 
       return clampTime(
         scaleTime(mediaTime, sourceDuration, alignmentDuration),
