@@ -130,12 +130,16 @@ export default apiInitializer((api) => {
 
       const seekToAlignment = async (
         alignmentTime,
-        { play = false, highlightTime = alignmentTime, clickedWordStart = null } =
-          {}
+        {
+          play = false,
+          highlightTime = alignmentTime,
+          clickedWordStart = null,
+          applySyncOffset = true,
+        } = {}
       ) => {
         const safeAlignmentTime = clampTime(alignmentTime, alignmentDuration);
         const mediaAlignmentTime = clampTime(
-          safeAlignmentTime - syncOffset,
+          applySyncOffset ? safeAlignmentTime - syncOffset : safeAlignmentTime,
           alignmentDuration
         );
 
@@ -163,6 +167,7 @@ export default apiInitializer((api) => {
             debugLog("AudioSync: clicked word seek:", {
               clicked_word_start: clickedWordStart,
               requested_alignment_time: safeAlignmentTime,
+              applied_sync_offset: applySyncOffset,
               requested_media_alignment_time: mediaAlignmentTime,
               requested_media_time: targetMediaTime,
               actual_media_time: audio.currentTime,
@@ -244,6 +249,7 @@ export default apiInitializer((api) => {
               play: true,
               highlightTime: start,
               clickedWordStart: start,
+              applySyncOffset: false,
             });
           }
         }
@@ -266,9 +272,9 @@ function debugWarn(...args) {
 }
 
 function getSeekPreroll() {
-  const preroll = Number(settings.seek_preroll_seconds ?? 0.08);
+  const preroll = Number(settings.seek_preroll_seconds ?? 0);
 
-  return Number.isFinite(preroll) && preroll >= 0 ? preroll : 0.08;
+  return Number.isFinite(preroll) && preroll >= 0 ? preroll : 0;
 }
 
 function getSyncOffset() {

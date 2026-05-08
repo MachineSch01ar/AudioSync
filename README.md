@@ -71,7 +71,7 @@ Admins can customize:
 
 - `highlight_color`
 - `highlight_text_color`
-- `seek_preroll_seconds` defaults to `0.08`; increase it if clicked words start clipped
+- `seek_preroll_seconds` defaults to `0`; increase it only if clicked words start clipped
 - `highlight_offset_seconds` defaults to `0.08`; increase it if highlights lag behind the audio, decrease it if highlights run ahead
 - `floating_player_enabled` defaults to `false`; enable it to keep the player sticky near the top of the viewport while readers scroll through its post
 - `debug_logging`
