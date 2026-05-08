@@ -16,6 +16,8 @@
   grid-template-areas: "button seek time";
   grid-template-columns: max-content minmax(8rem, 1fr) max-content;
   align-items: center;
+  position: relative;
+  isolation: isolate;
   column-gap: 0.75rem;
   row-gap: 0.55rem;
   box-sizing: border-box;
@@ -40,13 +42,22 @@
 
 .audio-sync-play-toggle {
   grid-area: button;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  position: relative;
+  z-index: 2;
+  box-sizing: border-box;
   min-inline-size: 4.5rem;
+  min-block-size: 2.25rem;
+  margin: 0;
   padding: 0.35rem 0.65rem;
   border: 1px solid var(--primary-low-mid);
   border-radius: 4px;
   color: var(--secondary);
   background: var(--tertiary);
   font: inherit;
+  line-height: 1;
   cursor: pointer;
 }
 
@@ -57,12 +68,20 @@
 
 .audio-sync-seek {
   grid-area: seek;
+  position: relative;
+  z-index: 1;
+  display: block;
+  box-sizing: border-box;
   inline-size: 100%;
+  max-inline-size: 100%;
   min-inline-size: 0;
+  margin: 0;
 }
 
 .audio-sync-time {
   grid-area: time;
+  position: relative;
+  z-index: 1;
   inline-size: 100%;
   min-inline-size: 0;
   color: var(--primary-medium);
